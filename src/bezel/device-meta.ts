@@ -6,37 +6,86 @@ export interface DeviceMeta {
 }
 
 export const IPHONE_SE_PORTRAIT: DeviceMeta = {
-  canvas: { width: 1000, height: 2000 },
-  viewport: { x: 125, y: 333, width: 750, height: 1334 },
-  screenCornerRadius: 40,
+  canvas: { width: 900, height: 1800 },
+  viewport: { x: 75, y: 210, width: 750, height: 1334 },
+  screenCornerRadius: 48,
   backgroundColor: "#0B0F13",
 };
 
-const BEZEL_SVG = `<?xml version="1.0" encoding="UTF-8"?>
-<svg width="1000" height="2000" viewBox="0 0 1000 2000" xmlns="http://www.w3.org/2000/svg">
+const BEZEL_SVG = `<!-- iPhone SE (2nd/3rd gen, 4.7") SVG mockup for bezel overlay
+     Canvas: 900×1800
+     Screen cutout: 750×1334 at (x=75, y=210), rx=48 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1800" viewBox="0 0 900 1800">
   <defs>
-    <!-- Define a mask that cuts out the screen area -->
-    <mask id="screenCutout">
-      <!-- White = visible, Black = transparent -->
-      <rect x="0" y="0" width="1000" height="2000" fill="white"/>
-      <!-- Cut out the screen area (125, 333, 750, 1334) with 40px radius -->
-      <rect x="125" y="333" width="750" height="1334" rx="40" ry="40" fill="black"/>
+    <!-- Soft drop shadow for the device body -->
+    <filter id="bodyShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-opacity="0.25"/>
+    </filter>
+
+    <!-- Gentle inner shadow for the display bezel -->
+    <filter id="innerShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feOffset dx="0" dy="0"/>
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feComposite in="SourceAlpha" in2="blur" operator="arithmetic" k2="-1" k3="1" result="inner"/>
+      <feColorMatrix in="inner" type="matrix"
+        values="0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0.6 0"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+
+    <!-- Subtle glass highlight across the body -->
+    <linearGradient id="edgeSheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a2e34" stop-opacity="0.20"/>
+      <stop offset="30%" stop-color="#2a2e34" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#2a2e34" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Mask to cut out the screen area -->
+    <mask id="screenMask">
+      <rect width="900" height="1800" fill="white"/>
+      <rect x="75" y="210" width="750" height="1334" rx="48" fill="black"/>
     </mask>
   </defs>
-  
+
   <!-- Device body with screen cutout -->
-  <rect x="50" y="30" width="900" height="1940" rx="100" ry="100" fill="#0D0F12" mask="url(#screenCutout)"/>
-  
-  <!-- Outer glass border (subtle stroke) -->
-  <rect x="70" y="50" width="860" height="1900" rx="90" ry="90" fill="none" stroke="#1A1E25" stroke-width="4"/>
-  
-  <!-- Inner screen border (subtle) -->
-  <rect x="125" y="333" width="750" height="1334" rx="40" ry="40" fill="none" stroke="#1A1E25" stroke-width="2" opacity="0.5"/>
+  <g filter="url(#bodyShadow)" mask="url(#screenMask)">
+    <rect x="0" y="0" width="900" height="1800" rx="120" fill="#0E0F12" stroke="#1C1F24" stroke-width="2"/>
+    <!-- Edge sheen -->
+    <rect x="0" y="0" width="900" height="1800" rx="120" fill="url(#edgeSheen)"/>
+  </g>
+
+  <!-- Screen bezel (subtle lip) with cutout -->
+  <rect x="60" y="195" width="780" height="1364" rx="58" fill="#0A0B0D" filter="url(#innerShadow)" mask="url(#screenMask)"/>
+
+  <!-- Top hardware (speaker + camera) -->
+  <!-- Speaker -->
+  <rect x="360" y="120" width="180" height="16" rx="8" fill="#22262C"/>
+  <!-- Camera -->
+  <circle cx="590" cy="135" r="10" fill="#121418" stroke="#2B2F36" stroke-width="2"/>
+  <circle cx="586" cy="131" r="2" fill="#3A3F47"/>
+
+  <!-- Home button (ringless Touch ID style) -->
+  <circle cx="450" cy="1672" r="74" fill="#0A0B0D" stroke="#2A2E34" stroke-width="2"/>
+  <circle cx="450" cy="1672" r="64" fill="#0D0F13"/>
+
+  <!-- Side buttons -->
+  <!-- Volume up -->
+  <rect x="0" y="600" width="10" height="90" rx="5" fill="#1A1E24"/>
+  <!-- Volume down -->
+  <rect x="0" y="720" width="10" height="90" rx="5" fill="#1A1E24"/>
+  <!-- Power -->
+  <rect x="890" y="680" width="10" height="120" rx="5" fill="#1A1E24"/>
+
+  <!-- Tiny bezel highlight lines -->
+  <rect x="1" y="1" width="898" height="1798" rx="119"
+        fill="none" stroke="#2D3238" stroke-opacity="0.15" stroke-width="2" mask="url(#screenMask)"/>
 </svg>`;
 
 const MASK_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="750" height="1334" viewBox="0 0 750 1334" xmlns="http://www.w3.org/2000/svg">
-  <rect x="0" y="0" width="750" height="1334" rx="40" ry="40" fill="#ffffff"/>
+  <rect x="0" y="0" width="750" height="1334" rx="48" ry="48" fill="#ffffff"/>
 </svg>`;
 
 export function bezelSvgBuffer(): Buffer {
