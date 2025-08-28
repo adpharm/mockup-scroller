@@ -6,9 +6,10 @@ import { encodeGif, writeStaticPreview, cleanupTemp } from './encode.js';
 import { IPHONE_SE_PORTRAIT } from './bezel/device-meta.js';
 import type { FrameRenderSpec } from './image.js';
 
-async function processOne(inputPath: string, outDir: string, speed: 'slow' | 'normal' | 'fast'): Promise<boolean> {
-  const absPath = path.resolve(inputPath);
-  console.log(`PROCESSING: ${absPath}`);
+async function processOne(inputPath: string, outDir: string, speed: 'slow' | 'normal' | 'fast', index: number, total: number): Promise<boolean> {
+  const baseName = sanitizeBasename(inputPath);
+  const startTime = Date.now();
+  console.log(`[${index}/${total}] Processing: ${baseName}.png`);
   
   try {
     const isPng = await verifyPng(inputPath);
@@ -45,12 +46,13 @@ async function processOne(inputPath: string, outDir: string, speed: 'slow' | 'no
     
     await cleanupTemp(framesDir);
     
-    console.log(`DONE: ${baseName} (gif, png)`);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[${index}/${total}] ✓ ${baseName} completed in ${elapsed}s`);
     return true;
     
   } catch (error) {
-    const baseName = sanitizeBasename(inputPath);
-    console.error(`ERROR: ${baseName} - ${error instanceof Error ? error.message : String(error)}`);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.error(`[${index}/${total}] ✗ ${baseName} failed (${elapsed}s): ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -63,15 +65,16 @@ export async function main(input: string, outDir: string, speed: 'slow' | 'norma
     return 2;
   }
   
-  console.log(`Found ${files.length} PNG file(s) to process`);
+  console.log(`Found ${files.length} PNG file(s) to process\n`);
   
   await ensureDirectory(outDir);
   
   let succeeded = 0;
   let failed = 0;
+  const startTime = Date.now();
   
-  for (const file of files) {
-    const success = await processOne(file, outDir, speed);
+  for (let i = 0; i < files.length; i++) {
+    const success = await processOne(files[i], outDir, speed, i + 1, files.length);
     if (success) {
       succeeded++;
     } else {
@@ -79,7 +82,9 @@ export async function main(input: string, outDir: string, speed: 'slow' | 'norma
     }
   }
   
-  console.log(`\nProcessed: ${files.length} | Succeeded: ${succeeded} | Failed: ${failed}`);
+  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`Summary: ${succeeded} succeeded, ${failed} failed (${totalTime}s total)`);
   
   if (failed > 0) {
     return 4;

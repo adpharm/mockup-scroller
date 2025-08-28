@@ -47,8 +47,8 @@ function computeFrames(scrollable: number, speed: 'slow' | 'normal' | 'fast'): n
   const pixelsPerFrame = scrollable / scrollFrames;
   const duration = totalFrames / FPS;
   
-  // Log the decision
-  console.log(`[${speed.toUpperCase()}] Scroll: ${scrollable}px over ${scrollFrames} frames + ${PAUSE_FRAMES*2} pause frames = ${totalFrames} total (${duration.toFixed(1)}s) @ ${pixelsPerFrame.toFixed(1)}px/frame`);
+  // Verbose logging commented out for cleaner batch processing
+  // console.log(`[${speed.toUpperCase()}] Scroll: ${scrollable}px over ${scrollFrames} frames + ${PAUSE_FRAMES*2} pause frames = ${totalFrames} total (${duration.toFixed(1)}s) @ ${pixelsPerFrame.toFixed(1)}px/frame`);
   
   return totalFrames;
 }
