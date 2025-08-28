@@ -1,0 +1,5 @@
+[package]
+  name = "mockup-scroller"
+
+[define]
+  __DEV__ = "true"

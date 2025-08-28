@@ -1,0 +1,74 @@
+#!/usr/bin/env bun
+import { Command } from 'commander';
+import { z } from 'zod';
+import { execa } from 'execa';
+import path from 'path';
+import { main } from './main.js';
+
+const argsSchema = z.object({
+  input: z.string().min(1),
+  out: z.string().min(1),
+  speed: z.enum(['slow', 'normal', 'fast']).optional().default('normal')
+});
+
+async function checkFfmpeg(): Promise<boolean> {
+  try {
+    await execa('ffmpeg', ['-version']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function run() {
+  const program = new Command();
+  
+  program
+    .name('mockup-scroller')
+    .description('Frame Figma mockups in iPhone SE and create scrolling GIFs')
+    .requiredOption('--input <glob-or-dir>', 'Input glob pattern or directory path')
+    .requiredOption('--out <directory>', 'Output directory')
+    .option('--speed <speed>', 'Scroll speed: slow, normal, fast (default: normal)', 'normal')
+    .parse(process.argv);
+
+  const options = program.opts();
+
+  const parseResult = argsSchema.safeParse(options);
+  if (!parseResult.success) {
+    console.error('ERROR: Invalid arguments:', parseResult.error.format());
+    process.exit(2);
+  }
+
+  const { input, out, speed } = parseResult.data;
+  
+  const absInput = path.resolve(input);
+  const absOut = path.resolve(out);
+
+  console.log(`Bun version: ${Bun.version}`);
+  
+  const hasFfmpeg = await checkFfmpeg();
+  if (!hasFfmpeg) {
+    console.error('ERROR: ffmpeg not found. Please install ffmpeg and ensure it is on your PATH.');
+    console.error('  macOS: brew install ffmpeg');
+    console.error('  Ubuntu/Debian: sudo apt-get install -y ffmpeg');
+    console.error('  Windows: winget install Gyan.FFmpeg');
+    process.exit(3);
+  }
+
+  const ffmpegVersion = await execa('ffmpeg', ['-version']);
+  const ffmpegFirstLine = ffmpegVersion.stdout.split('\n')[0];
+  console.log(`ffmpeg version: ${ffmpegFirstLine}`);
+
+  try {
+    const exitCode = await main(absInput, absOut, speed);
+    process.exit(exitCode);
+  } catch (error) {
+    console.error('ERROR: Unhandled exception:', error);
+    process.exit(4);
+  }
+}
+
+run().catch(error => {
+  console.error('ERROR: Fatal error:', error);
+  process.exit(4);
+});

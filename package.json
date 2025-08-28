@@ -1,0 +1,51 @@
+{
+  "name": "mockup-scroller",
+  "version": "1.0.0",
+  "description": "Transform static mockups into animated device presentations with smooth scrolling",
+  "keywords": [
+    "mockup",
+    "animation",
+    "gif",
+    "scrolling",
+    "figma",
+    "design",
+    "presentation",
+    "device-frame"
+  ],
+  "homepage": "https://github.com/adpharm/mockup-scroller",
+  "bugs": {
+    "url": "https://github.com/adpharm/mockup-scroller/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adpharm/mockup-scroller.git"
+  },
+  "license": "MIT",
+  "author": "adpharm",
+  "type": "module",
+  "bin": {
+    "mockup-scroller": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "bun run src/cli.ts"
+  },
+  "engines": {
+    "bun": ">=1.1.19"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "execa": "^9.3.0",
+    "globby": "^14.0.2",
+    "sharp": "^0.33.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.21",
+    "@types/node": "^24.3.0",
+    "typescript": "^5.5.4"
+  }
+}
