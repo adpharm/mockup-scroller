@@ -1,8 +1,8 @@
 # Developer Handoff Document - Mockup Scroller
 
-**Date:** August 28, 2024  
+**Date:** August 28, 2024 (Updated)  
 **Project:** mockup-scroller  
-**Version:** 0.2.0 (MVP Enhanced with Smooth Scrolling & Optimizations)
+**Version:** 1.0.0 (Production-Ready with Speed Control & Batch Processing)
 
 ## Table of Contents
 1. [Project Overview](#project-overview)
@@ -28,11 +28,13 @@
 4. Outputs both an animated GIF and a static PNG preview
 
 ### Key Specifications
-- **Device:** iPhone SE (portrait only)
-- **Canvas Size:** 1000×2000px (scaled to 800px width in GIF for file size)
-- **Viewport Size:** 750×1334px at position (125, 333)
-- **Animation:** Adaptive duration (up to 9s), 30 FPS, smooth scrolling
-- **Scroll Speed:** ~20-25 pixels per frame for smooth motion
+- **Device:** iPhone SE (portrait only) with enhanced realistic bezel
+- **Canvas Size:** 900×1800px (scaled to 720px width in GIF)
+- **Viewport Size:** 750×1334px at position (75, 210)
+- **Screen Corner Radius:** 48px (updated from 40px)
+- **Animation:** Adaptive duration with configurable speed, 30 FPS
+- **Scroll Speed:** Configurable (slow: 15px/frame, normal: 21.5px/frame, fast: 30px/frame)
+- **Pause Frames:** 1 second at start and end (30 frames each)
 - **Output Formats:** GIF (animated, 80% scale) + PNG (static preview, full size)
 
 ## Business Context
@@ -78,27 +80,26 @@ The tool follows a pipeline architecture:
 ```
 mockup-scroller/
 ├── src/
-│   ├── cli.ts              # CLI entry point, argument parsing
-│   ├── main.ts             # Main orchestration logic
-│   ├── fileio.ts           # File operations utilities
+│   ├── cli.ts              # CLI entry point with speed flag
+│   ├── main.ts             # Orchestration with progress reporting
+│   ├── fileio.ts           # File ops + directory detection
 │   ├── image.ts            # Image processing functions
-│   ├── animate.ts          # Animation frame generation
+│   ├── animate.ts          # Animation with speed control
 │   ├── encode.ts           # GIF encoding with ffmpeg
 │   └── bezel/
-│       ├── device-meta.ts  # Device specifications and SVG buffers
+│       ├── device-meta.ts  # Enhanced iPhone SE specs
 │       └── svg/
-│           ├── bezel.svg   # Device frame with screen cutout
-│           └── mask.svg    # Screen corner radius mask
+│           ├── bezel.svg   # Realistic device frame
+│           └── mask.svg    # 48px corner radius mask
 ├── dist/                   # Compiled JavaScript output
-├── out/                    # Generated GIFs and PNGs (gitignored)
-├── test-input/             # Sample input PNGs (gitignored)
-├── assets/
-│   └── README.md           # Device assets documentation
-├── package.json            # Dependencies and scripts
+├── out/                    # Generated GIFs and PNGs
+├── local/                  # Local test files (gitignored)
+├── LICENSE                 # MIT License
+├── README.md              # User documentation
+├── package.json            # Dependencies and metadata
 ├── bunfig.toml            # Bun configuration
 ├── tsconfig.json          # TypeScript configuration
-├── MVP_IMPLEMENTATION_PLAN_AUG_28.md  # Original specification
-└── IMPLEMENTATION_STATUS.md # Current implementation status
+└── DEVELOPER_HANDOFF.md   # This document
 ```
 
 ## Core Implementation Details
@@ -121,17 +122,27 @@ mockup-scroller/
 
 ### 2. Adaptive Scroll Animation (NEW)
 
-**Smooth Scrolling Implementation (`animate.ts:9-36`)**
+**Smooth Scrolling with Speed Control (`animate.ts`)**
 ```typescript
-const TARGET_PPF = 21.5;   // Target pixels per frame for smooth motion
-const MIN_FRAMES = 150;    // Minimum 5 seconds animation
-const MAX_FRAMES = 270;    // Maximum 9 seconds (performance cap)
+const PAUSE_FRAMES = 30;   // 1 second pause at start/end
 
-// Adaptive frame calculation:
-- If no scrolling needed: 180 frames (6s) of static content
-- If scrolling: Calculate frames to achieve ~21.5 px/frame
-- Capped at 270 frames (9s) for very tall content
-- Result: Smooth, readable scrolling at consistent speed
+const SPEED_CONFIG = {
+  slow: {
+    targetPpf: 15,      // Slower scrolling for readability
+    minFrames: 180,     // Min 6s animation
+    maxFrames: 360      // Max 12s animation
+  },
+  normal: {
+    targetPpf: 21.5,    // Balanced speed
+    minFrames: 150,     // Min 5s animation
+    maxFrames: 270      // Max 9s animation
+  },
+  fast: {
+    targetPpf: 30,      // Quick scrolling
+    minFrames: 90,      // Min 3s animation
+    maxFrames: 180      // Max 6s animation
+  }
+};
 ```
 
 ### 3. File Size Optimization (NEW)
@@ -156,14 +167,16 @@ const MAX_FRAMES = 270;    // Maximum 9 seconds (performance cap)
 
 ### 5. Critical SVG Elements
 
-**Bezel SVG** (`bezel/svg/bezel.svg`)
-- Uses SVG mask to create transparent screen cutout
-- Screen area: x=125, y=333, width=750, height=1334
-- Important: Must remain transparent except for device frame
+**Enhanced Bezel SVG** (`bezel/svg/bezel.svg`)
+- Realistic iPhone SE design with hardware elements
+- Drop shadows and inner shadows for depth
+- Glass highlights and edge sheen effects
+- Screen area: x=75, y=210, width=750, height=1334
+- Hardware details: camera, speaker, home button, side buttons
 
 **Mask SVG** (`bezel/svg/mask.svg`)
-- Simple rounded rectangle (40px radius)
-- Used with `dest-in` blend mode for corner rounding
+- Rounded rectangle with 48px radius
+- Matches actual iPhone SE screen corner radius
 
 ### 6. Error Handling
 
@@ -175,14 +188,17 @@ The tool uses specific exit codes:
 
 ## Current Features
 
-### Completed (MVP)
+### Completed Features (v1.0.0)
 ✅ Single device support (iPhone SE portrait)  
+✅ Enhanced realistic iPhone SE bezel with hardware details  
 ✅ PNG input validation (dimensions, format)  
 ✅ Automatic resizing to viewport width  
-✅ Linear scroll animation (6s, 30 FPS)  
-✅ Rounded screen corners (40px radius)  
+✅ **Configurable scroll speed** (slow/normal/fast)  
+✅ **Pause frames** at start/end for smooth looping  
+✅ Rounded screen corners (48px radius)  
 ✅ Two-output generation (GIF + static PNG)  
-✅ Batch processing support  
+✅ **Folder batch processing** with progress reporting  
+✅ **Directory auto-detection** for easy batch operations  
 ✅ Proper error handling and logging  
 ✅ TypeScript compilation to JavaScript  
 
@@ -252,14 +268,23 @@ bun install
 
 ### Development Commands
 ```bash
-# Run in development mode (TypeScript)
-bun run dev --input "./test-input/*.png" --out "./out"
+# Process single file
+bun run dev --input "./mockup.png" --out "./out"
+
+# Process entire folder
+bun run dev --input "./screenshots" --out "./out"
+
+# Process with glob pattern
+bun run dev --input "./designs/*.png" --out "./out"
+
+# With speed control
+bun run dev --input "./mockup.png" --out "./out" --speed slow
 
 # Build to JavaScript
 bun run build
 
 # Run compiled version
-bun dist/src/cli.js --input "./test-input/*.png" --out "./out"
+bun dist/src/cli.js --input "./mockups" --out "./out"
 ```
 
 ### Project Scripts
@@ -269,13 +294,17 @@ bun dist/src/cli.js --input "./test-input/*.png" --out "./out"
 ## Testing
 
 ### Manual Testing Process
-1. Place test PNGs in `test-input/` directory
-2. Run: `bun run dev --input "./test-input/*.png" --out "./out"`
-3. Verify outputs in `out/` directory
+1. Place test PNGs in a directory
+2. Run: `bun run dev --input "./screenshots" --out "./out"`
+3. Verify outputs in `out/` directory with progress reporting
 
 ### Test Cases to Verify
 - **Short content** (< 1334px height) - Should not scroll
 - **Tall content** (> 1334px height) - Should scroll smoothly
+- **Speed variations** - Test slow/normal/fast speeds
+- **Batch processing** - Process entire folders
+- **Progress reporting** - Shows [current/total] counter
+- **Loop quality** - Pause frames create smooth loops
 - **Narrow content** (< 750px width) - Should upscale to fit
 - **Wide content** (> 750px width) - Should downscale to fit
 - **Invalid formats** - Should reject with clear error
@@ -294,9 +323,9 @@ bun dist/src/cli.js --input "./test-input/*.png" --out "./out"
    - Device selection via CLI flag
 
 2. **Performance Optimizations**
-   - Parallel processing option
-   - GIF compression settings
-   - Frame rate customization
+   - Parallel processing option (--parallel flag)
+   - Advanced GIF compression settings
+   - Custom frame rate options
    - Cache resized images for batch processing
 
 3. **Enhanced Features**
@@ -366,13 +395,32 @@ bun dist/src/cli.js --input "./test-input/*.png" --out "./out"
 - Sample Input: `test-input/rethink-landing-page-aug-28.png`
 - Generated Outputs: `out/` directory
 
+## Recent Updates (v1.0.0)
+
+### New Features Added
+- **Configurable scroll speed** via --speed flag (slow/normal/fast)
+- **Pause frames** at start/end for seamless looping
+- **Enhanced iPhone SE bezel** with realistic hardware details
+- **Folder batch processing** with directory auto-detection
+- **Improved progress reporting** with [current/total] counters
+- **Open-source ready** with LICENSE and comprehensive README
+
+### Technical Improvements
+- Canvas resized to 900×1800px for better proportions
+- Screen corner radius updated to 48px
+- Drop shadows and glass effects on device frame
+- Cleaner console output for batch operations
+
 ## Handoff Checklist
 
-- [x] All MVP features implemented and tested
+- [x] All production features implemented and tested
+- [x] Speed control system working
+- [x] Batch processing with progress reporting
+- [x] Enhanced realistic device bezels
 - [x] TypeScript compilation working
 - [x] ffmpeg integration functional
-- [x] Sample input file provided
-- [x] Documentation complete
+- [x] Documentation complete (README + Developer docs)
+- [x] Open-source ready with proper licensing
 - [x] Known issues documented
 - [x] Future enhancements outlined
 
