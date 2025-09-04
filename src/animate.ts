@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import path from 'path';
 import fs from 'fs/promises';
 import { DeviceMeta } from './bezel/device-meta.js';
-import { FrameRenderSpec, resizeToViewportWidth, cropFrame, compositeOnCanvas, loadMeta } from './image.js';
+import { FrameRenderSpec, resizeToViewportWidth, cropFrame, cropSimple, compositeOnCanvas, loadMeta } from './image.js';
 import { bezelSvgBuffer, maskSvgBuffer } from './bezel/device-meta.js';
 import { ensureDirectory } from './fileio.js';
 
@@ -11,22 +11,19 @@ const FPS = 30;            // keep fixed
 const STATIC_FRAMES = 180; // unchanged for non-scrolling (6s at 30fps)
 const PAUSE_FRAMES = 30;   // 1 second pause at beginning and end (30 frames each at 30fps)
 
-// Speed configurations
+// Speed configurations - consistent pixels per frame regardless of content height
 const SPEED_CONFIG = {
   slow: {
-    targetPpf: 15,      // Slower scrolling
-    minFrames: 180,     // Min 6s
-    maxFrames: 360      // Max 12s
+    targetPpf: 15,      // 15 pixels per frame - always
+    minFrames: 120      // Min 4s scrolling (plus pauses)
   },
   normal: {
-    targetPpf: 21.5,    // Normal speed
-    minFrames: 150,     // Min 5s
-    maxFrames: 270      // Max 9s
+    targetPpf: 21.5,    // 21.5 pixels per frame - always
+    minFrames: 90       // Min 3s scrolling (plus pauses)
   },
   fast: {
-    targetPpf: 30,      // Faster scrolling
-    minFrames: 90,      // Min 3s
-    maxFrames: 180      // Max 6s
+    targetPpf: 30,      // 30 pixels per frame - always
+    minFrames: 60       // Min 2s scrolling (plus pauses)
   }
 };
 
@@ -35,20 +32,22 @@ function computeFrames(scrollable: number, speed: 'slow' | 'normal' | 'fast'): n
   
   const config = SPEED_CONFIG[speed];
   
-  // Calculate ideal frames for smooth scrolling based on speed
-  const idealScrollFrames = Math.ceil(scrollable / config.targetPpf) + 1;
+  // Calculate frames needed for consistent scroll speed
+  // The speed (pixels per frame) stays constant, only duration changes
+  const scrollFramesNeeded = Math.ceil(scrollable / config.targetPpf);
   
-  // Apply min/max constraints for scrolling frames only
-  const scrollFrames = Math.min(config.maxFrames - (PAUSE_FRAMES * 2), Math.max(config.minFrames - (PAUSE_FRAMES * 2), idealScrollFrames));
+  // No max cap - let duration extend as needed for consistent speed
+  // Only apply minimum to avoid too-short animations
+  const scrollFrames = Math.max(config.minFrames - (PAUSE_FRAMES * 2), scrollFramesNeeded);
   
   // Total frames includes pause frames at beginning and end
   const totalFrames = scrollFrames + (PAUSE_FRAMES * 2);
   
-  const pixelsPerFrame = scrollable / scrollFrames;
+  const actualPpf = scrollable / scrollFrames;
   const duration = totalFrames / FPS;
   
   // Verbose logging commented out for cleaner batch processing
-  // console.log(`[${speed.toUpperCase()}] Scroll: ${scrollable}px over ${scrollFrames} frames + ${PAUSE_FRAMES*2} pause frames = ${totalFrames} total (${duration.toFixed(1)}s) @ ${pixelsPerFrame.toFixed(1)}px/frame`);
+  // console.log(`[${speed.toUpperCase()}] Scroll: ${scrollable}px in ${duration.toFixed(1)}s @ ${actualPpf.toFixed(1)}px/frame`);
   
   return totalFrames;
 }
@@ -80,6 +79,136 @@ function computeYOffsetSequence(scrollable: number, frames: number): number[] {
   }
   
   return offsets;
+}
+
+interface SegmentSpec {
+  start: number;
+  end: number;
+}
+
+function calculateSegments(contentHeight: number, viewportHeight: number): SegmentSpec[] {
+  const OVERLAP = 100;
+  const TRIVIAL_THRESHOLD = 0.2;
+  
+  const segments: SegmentSpec[] = [];
+  let currentY = 0;
+  
+  while (currentY < contentHeight) {
+    const segmentEnd = Math.min(currentY + viewportHeight, contentHeight);
+    const remainingContent = contentHeight - currentY;
+    
+    // For last segment: skip if < 20% new content vs previous segment
+    if (segments.length > 0 && remainingContent < viewportHeight * TRIVIAL_THRESHOLD) {
+      break; // Skip this trivial last segment
+    }
+    
+    segments.push({
+      start: currentY,
+      end: segmentEnd
+    });
+    
+    // If we've covered all content, stop
+    if (segmentEnd >= contentHeight) break;
+    
+    // Move to next segment with overlap
+    currentY += viewportHeight - OVERLAP;
+  }
+  
+  return segments;
+}
+
+export async function generateScreenSegments(
+  spec: FrameRenderSpec,
+  screenHeight: number = 1600,
+  generateSegments: boolean = true
+): Promise<string[]> {
+  if (!generateSegments) {
+    return [];
+  }
+  
+  const screenWidth = 750; // Fixed width matching viewport
+  
+  const resizedContent = await resizeToViewportWidth(spec.inputPath, screenWidth);
+  
+  const resizedMeta = await sharp(resizedContent).metadata();
+  const contentHeight = resizedMeta.height!;
+  
+  // Use same segment calculation logic but with custom height
+  const segments = calculateSegments(contentHeight, screenHeight);
+  const segmentPaths: string[] = [];
+  
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    const topY = segment.start;
+    
+    // Use cropSimple for square corners, no masking
+    const screenContent = await cropSimple(
+      resizedContent,
+      topY,
+      screenWidth,
+      screenHeight,
+      contentHeight
+    );
+    
+    const segmentPath = path.join(spec.outDir, `${spec.baseName}.screen.${i + 1}.png`);
+    await fs.writeFile(segmentPath, screenContent);
+    segmentPaths.push(segmentPath);
+  }
+  
+  return segmentPaths;
+}
+
+export async function generateSegments(
+  spec: FrameRenderSpec,
+  deviceMeta: DeviceMeta,
+  generateSegments: boolean = true
+): Promise<string[]> {
+  if (!generateSegments) {
+    return [];
+  }
+
+  const bezelSvg = bezelSvgBuffer();
+  const bezelPng = await sharp(bezelSvg)
+    .resize(deviceMeta.canvas.width, deviceMeta.canvas.height)
+    .png()
+    .toBuffer();
+  
+  const maskSvg = maskSvgBuffer();
+  
+  const resizedContent = await resizeToViewportWidth(spec.inputPath, deviceMeta.viewport.width);
+  
+  const resizedMeta = await sharp(resizedContent).metadata();
+  const contentHeight = resizedMeta.height!;
+  const viewportHeight = deviceMeta.viewport.height;
+  
+  const segments = calculateSegments(contentHeight, viewportHeight);
+  const segmentPaths: string[] = [];
+  
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    const topY = segment.start;
+    
+    const maskedContent = await cropFrame(
+      resizedContent,
+      topY,
+      deviceMeta.viewport.width,
+      deviceMeta.viewport.height,
+      maskSvg,
+      contentHeight  // Pass content height to avoid redundant metadata calls
+    );
+    
+    const frameBuffer = await compositeOnCanvas(
+      maskedContent,
+      bezelPng,
+      deviceMeta
+    );
+    
+    const segmentPath = path.join(spec.outDir, `${spec.baseName}.framed.${i + 1}.png`);
+    await fs.writeFile(segmentPath, frameBuffer);
+    segmentPaths.push(segmentPath);
+  }
+  
+  return segmentPaths;
 }
 
 export async function renderAllFrames(
@@ -118,7 +247,8 @@ export async function renderAllFrames(
       topY,
       deviceMeta.viewport.width,
       deviceMeta.viewport.height,
-      maskSvg
+      maskSvg,
+      contentHeight  // Pass content height to avoid redundant metadata calls
     );
     
     const frameBuffer = await compositeOnCanvas(

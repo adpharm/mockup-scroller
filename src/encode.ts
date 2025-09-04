@@ -36,17 +36,6 @@ export async function encodeGif(
   await cleanupFile(palettePath);
 }
 
-export async function writeStaticPreview(
-  framesDir: string,
-  baseName: string,
-  outDir: string
-): Promise<void> {
-  const firstFramePath = path.join(framesDir, `${baseName}.000000.png`);
-  const staticPath = path.join(outDir, `${baseName}.framed.static.png`);
-  
-  await fs.copyFile(firstFramePath, staticPath);
-}
-
 export async function cleanupTemp(
   framesDir: string,
   palettePath?: string

@@ -1,12 +1,12 @@
 import path from 'path';
 import { resolveInputFiles, verifyPng, sanitizeBasename, ensureDirectory } from './fileio.js';
 import { loadMeta } from './image.js';
-import { renderAllFrames } from './animate.js';
-import { encodeGif, writeStaticPreview, cleanupTemp } from './encode.js';
+import { renderAllFrames, generateSegments, generateScreenSegments } from './animate.js';
+import { encodeGif, cleanupTemp } from './encode.js';
 import { IPHONE_SE_PORTRAIT } from './bezel/device-meta.js';
 import type { FrameRenderSpec } from './image.js';
 
-async function processOne(inputPath: string, outDir: string, speed: 'slow' | 'normal' | 'fast', index: number, total: number): Promise<boolean> {
+async function processOne(inputPath: string, outDir: string, speed: 'slow' | 'normal' | 'fast', generateSegmentFiles: boolean, screenHeight: number, index: number, total: number): Promise<boolean> {
   const baseName = sanitizeBasename(inputPath);
   const startTime = Date.now();
   console.log(`[${index}/${total}] Processing: ${baseName}.png`);
@@ -38,16 +38,44 @@ async function processOne(inputPath: string, outDir: string, speed: 'slow' | 'no
       outDir
     };
 
+    // Generate framed segments (with device bezel)
+    const framedPaths = await generateSegments(spec, IPHONE_SE_PORTRAIT, generateSegmentFiles);
+    
+    // Generate screen segments (no bezel, square corners)
+    const screenPaths = await generateScreenSegments(spec, screenHeight, generateSegmentFiles);
+    
+    // Generate animated frames for GIF
     const { framesDir, framesCount, fps } = await renderAllFrames(spec, IPHONE_SE_PORTRAIT, speed);
     
+    // Create animated GIF
     await encodeGif(framesDir, baseName, outDir, fps);
     
-    await writeStaticPreview(framesDir, baseName, outDir);
-    
+    // Clean up temporary frames
     await cleanupTemp(framesDir);
     
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    
+    // Update console output based on segments generated
     console.log(`[${index}/${total}] ✓ ${baseName} completed in ${elapsed}s`);
+    
+    if (framedPaths.length > 0 || screenPaths.length > 0) {
+      if (framedPaths.length > 0) {
+        const framedList = framedPaths.length === 1 
+          ? `1 framed segment: ${baseName}.framed.1.png`
+          : `${framedPaths.length} framed segments: ${baseName}.framed.1-${framedPaths.length}.png`;
+        console.log(`    Generated ${framedList}`);
+      }
+      
+      if (screenPaths.length > 0) {
+        const screenList = screenPaths.length === 1
+          ? `1 screen segment: ${baseName}.screen.1.png`
+          : `${screenPaths.length} screen segments: ${baseName}.screen.1-${screenPaths.length}.png`;
+        console.log(`    Generated ${screenList}`);
+      }
+    }
+    
+    console.log(`    Generated scrolling animation: ${baseName}.framed.scroll.gif`);
+    
     return true;
     
   } catch (error) {
@@ -57,7 +85,7 @@ async function processOne(inputPath: string, outDir: string, speed: 'slow' | 'no
   }
 }
 
-export async function main(input: string, outDir: string, speed: 'slow' | 'normal' | 'fast' = 'normal'): Promise<number> {
+export async function main(input: string, outDir: string, speed: 'slow' | 'normal' | 'fast' = 'normal', generateSegments: boolean = true, screenHeight: number = 1600): Promise<number> {
   const files = await resolveInputFiles(input);
   
   if (files.length === 0) {
@@ -74,7 +102,7 @@ export async function main(input: string, outDir: string, speed: 'slow' | 'norma
   const startTime = Date.now();
   
   for (let i = 0; i < files.length; i++) {
-    const success = await processOne(files[i], outDir, speed, i + 1, files.length);
+    const success = await processOne(files[i], outDir, speed, generateSegments, screenHeight, i + 1, files.length);
     if (success) {
       succeeded++;
     } else {

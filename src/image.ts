@@ -34,23 +34,91 @@ export async function resizeToViewportWidth(
   return resized;
 }
 
+export async function cropSimple(
+  contentBuf: Buffer,
+  topY: number,
+  width: number,
+  height: number,
+  contentHeight?: number
+): Promise<Buffer> {
+  // Get the actual dimensions of the content if not provided
+  const actualContentHeight = contentHeight ?? (await sharp(contentBuf).metadata()).height!;
+  
+  // Calculate the actual height we can extract
+  const availableHeight = actualContentHeight - topY;
+  const extractHeight = Math.min(height, availableHeight);
+  
+  // If we need to extract less than requested height, we'll need to pad
+  const needsPadding = extractHeight < height;
+  
+  // Extract the available content
+  const cropped = await sharp(contentBuf)
+    .extract({
+      left: 0,
+      top: topY,
+      width: width,
+      height: extractHeight
+    })
+    .toBuffer();
+  
+  // If we need padding, extend the canvas to full height
+  let finalBuffer = cropped;
+  if (needsPadding) {
+    finalBuffer = await sharp(cropped)
+      .extend({
+        bottom: height - extractHeight,
+        background: { r: 255, g: 255, b: 255, alpha: 1 } // White background for clean screens
+      })
+      .png({
+        compressionLevel: 6,
+        quality: 85
+      })
+      .toBuffer();
+  }
+  
+  return finalBuffer;
+}
+
 export async function cropFrame(
   contentBuf: Buffer,
   topY: number,
   viewportW: number,
   viewportH: number,
-  maskSvgBuf: Buffer
+  maskSvgBuf: Buffer,
+  contentHeight?: number  // Optional, will fetch if not provided
 ): Promise<Buffer> {
+  // Get the actual dimensions of the content if not provided
+  const actualContentHeight = contentHeight ?? (await sharp(contentBuf).metadata()).height!;
+  
+  // Calculate the actual height we can extract
+  const availableHeight = actualContentHeight - topY;
+  const extractHeight = Math.min(viewportH, availableHeight);
+  
+  // If we need to extract less than viewport height, we'll need to pad
+  const needsPadding = extractHeight < viewportH;
+  
+  // Extract the available content
   const cropped = await sharp(contentBuf)
     .extract({
       left: 0,
       top: topY,
       width: viewportW,
-      height: viewportH
+      height: extractHeight
     })
     .toBuffer();
+  
+  // If we need padding, extend the canvas to full viewport height
+  let finalBuffer = cropped;
+  if (needsPadding) {
+    finalBuffer = await sharp(cropped)
+      .extend({
+        bottom: viewportH - extractHeight,
+        background: { r: 245, g: 245, b: 247, alpha: 1 } // Match canvas background
+      })
+      .toBuffer();
+  }
 
-  const masked = await sharp(cropped)
+  const masked = await sharp(finalBuffer)
     .composite([{
       input: maskSvgBuf,
       blend: 'dest-in'
