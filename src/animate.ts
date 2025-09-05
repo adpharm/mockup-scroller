@@ -6,71 +6,76 @@ import { FrameRenderSpec, resizeToViewportWidth, cropFrame, cropSimple, composit
 import { bezelSvgBuffer, maskSvgBuffer } from './bezel/device-meta.js';
 import { ensureDirectory } from './fileio.js';
 
-// Smoothness target: slower, smoother scrolling for better readability
+// Frame configuration
 const FPS = 30;            // keep fixed
 const STATIC_FRAMES = 180; // unchanged for non-scrolling (6s at 30fps)
 const PAUSE_FRAMES = 30;   // 1 second pause at beginning and end (30 frames each at 30fps)
 
-// Speed configurations - consistent pixels per frame regardless of content height
-const SPEED_CONFIG = {
-  slow: {
-    targetPpf: 15,      // 15 pixels per frame - always
-    minFrames: 120      // Min 4s scrolling (plus pauses)
-  },
-  normal: {
-    targetPpf: 21.5,    // 21.5 pixels per frame - always
-    minFrames: 90       // Min 3s scrolling (plus pauses)
-  },
-  fast: {
-    targetPpf: 30,      // 30 pixels per frame - always
-    minFrames: 60       // Min 2s scrolling (plus pauses)
-  }
-};
-
-function computeFrames(scrollable: number, speed: 'slow' | 'normal' | 'fast'): number {
-  if (scrollable <= 0) return STATIC_FRAMES; // unchanged for static cases
-  
-  const config = SPEED_CONFIG[speed];
-  
-  // Calculate frames needed for consistent scroll speed
-  // The speed (pixels per frame) stays constant, only duration changes
-  const scrollFramesNeeded = Math.ceil(scrollable / config.targetPpf);
-  
-  // No max cap - let duration extend as needed for consistent speed
-  // Only apply minimum to avoid too-short animations
-  const scrollFrames = Math.max(config.minFrames - (PAUSE_FRAMES * 2), scrollFramesNeeded);
-  
-  // Total frames includes pause frames at beginning and end
-  const totalFrames = scrollFrames + (PAUSE_FRAMES * 2);
-  
-  const actualPpf = scrollable / scrollFrames;
-  const duration = totalFrames / FPS;
-  
-  // Verbose logging commented out for cleaner batch processing
-  // console.log(`[${speed.toUpperCase()}] Scroll: ${scrollable}px in ${duration.toFixed(1)}s @ ${actualPpf.toFixed(1)}px/frame`);
-  
-  return totalFrames;
+// Human-like scroll configuration - easily tunable
+interface SwipeConfig {
+  distanceFactor: number;  // How far to scroll as % of viewport (0.4 = 40%)
+  swipeFrames: number;     // How many frames for the swipe animation
+  pauseFrames: number;     // How many frames to pause after swipe
 }
 
-function computeYOffsetSequence(scrollable: number, frames: number): number[] {
+// Configurable swipe pattern for human-like scrolling - smoother configuration
+const SWIPE_PATTERN: SwipeConfig[] = [
+  { distanceFactor: 0.50, swipeFrames: 15, pauseFrames: 15 },  // Smooth 50% swipe
+  { distanceFactor: 0.48, swipeFrames: 14, pauseFrames: 16 },  // Slightly less distance
+  { distanceFactor: 0.52, swipeFrames: 16, pauseFrames: 14 },  // Bit more distance
+  { distanceFactor: 0.45, swipeFrames: 13, pauseFrames: 17 },  // Smaller scroll
+  { distanceFactor: 0.53, swipeFrames: 17, pauseFrames: 15 },  // Slightly bigger push
+];
+
+// Ease-in-out cubic function for smoother acceleration and deceleration
+function easeInOutCubic(t: number): number {
+  return t < 0.5
+    ? 4 * t * t * t
+    : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function computeHumanScrollOffsets(scrollable: number, viewportHeight: number): number[] {
   if (scrollable <= 0) {
     // All zeros; still emit STATIC_FRAMES so timing stays 6s
     return Array.from({ length: STATIC_FRAMES }, () => 0);
   }
   
-  // Total frames includes pause frames
-  const scrollFrames = frames - (PAUSE_FRAMES * 2);
   const offsets: number[] = [];
+  let currentY = 0;
+  let swipeIndex = 0;
   
   // Add pause frames at the beginning (stay at top)
   for (let i = 0; i < PAUSE_FRAMES; i++) {
     offsets.push(0);
   }
   
-  // Add scrolling frames
-  for (let i = 0; i < scrollFrames; i++) {
-    const progress = i / (scrollFrames - 1);
-    offsets.push(Math.round(progress * scrollable));
+  // Generate human-like swipes until we reach the bottom
+  while (currentY < scrollable) {
+    const swipe = SWIPE_PATTERN[swipeIndex % SWIPE_PATTERN.length];
+    
+    // Calculate swipe distance (capped at remaining scroll distance)
+    const targetDistance = viewportHeight * swipe.distanceFactor;
+    const actualDistance = Math.min(targetDistance, scrollable - currentY);
+    
+    // Generate swipe frames with smooth ease-in-out animation
+    const startY = currentY;
+    for (let i = 0; i < swipe.swipeFrames; i++) {
+      const t = i / (swipe.swipeFrames - 1);
+      const easedProgress = easeInOutCubic(t);
+      const yPos = Math.round(startY + actualDistance * easedProgress);
+      offsets.push(yPos);
+    }
+    
+    currentY = Math.round(currentY + actualDistance);
+    
+    // Only add pause if we're not at the bottom yet
+    if (currentY < scrollable) {
+      for (let i = 0; i < swipe.pauseFrames; i++) {
+        offsets.push(currentY);
+      }
+    }
+    
+    swipeIndex++;
   }
   
   // Add pause frames at the end (stay at bottom)
@@ -213,8 +218,7 @@ export async function generateSegments(
 
 export async function renderAllFrames(
   spec: FrameRenderSpec,
-  deviceMeta: DeviceMeta,
-  speed: 'slow' | 'normal' | 'fast' = 'normal'
+  deviceMeta: DeviceMeta
 ): Promise<{ framesDir: string; framesCount: number; fps: number }> {
   const bezelSvg = bezelSvgBuffer();
   const bezelPng = await sharp(bezelSvg)
@@ -229,11 +233,11 @@ export async function renderAllFrames(
   const resizedMeta = await sharp(resizedContent).metadata();
   const contentHeight = resizedMeta.height!;
   
-  // Calculate scrollable distance and adaptive frames
+  // Calculate scrollable distance and generate human-like scroll offsets
   const viewportHeight = deviceMeta.viewport.height;
   const scrollable = Math.max(0, contentHeight - viewportHeight);
-  const framesCount = computeFrames(scrollable, speed);
-  const yOffsets = computeYOffsetSequence(scrollable, framesCount);
+  const yOffsets = computeHumanScrollOffsets(scrollable, viewportHeight);
+  const framesCount = yOffsets.length;
   
   const framesDir = path.join(spec.outDir, `${spec.baseName}.frames`);
   await ensureDirectory(framesDir);
