@@ -192,5 +192,5 @@ terraform.rc
 # Project specific
 test-input/
 *.frames/
-
+*.palette.png
 local

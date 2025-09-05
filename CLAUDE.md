@@ -1,9 +1,15 @@
-# CLAUDE.md - AI Assistant Reference Guide
+# CLAUDE.md - Comprehensive Development Guide
 
 ## Project Overview
 **Project:** mockup-scroller  
 **Version:** 1.0.0  
-**Purpose:** CLI tool that transforms static PNG mockups into animated GIFs showing the mockup within an iPhone SE device bezel with smooth scrolling animation.
+**Purpose:** CLI tool that transforms static PNG mockups into animated GIFs with iPhone SE device bezels and human-like scrolling animation.
+
+## Recent Major Changes (IMPORTANT!)
+1. **Human-like scrolling** - Replaced linear scrolling with natural burst-and-pause pattern
+2. **No more speed options** - Removed `--speed` flag, uses optimized defaults
+3. **Multi-screen segments** - Generates both framed and bezel-less segments
+4. **No static PNGs** - Replaced `.framed.static.png` with `.framed.1.png`
 
 ## Quick Start Commands
 
@@ -12,9 +18,13 @@
 # Install dependencies
 bun install
 
-# Run with TypeScript (development)
+# Basic usage (NO --speed flag anymore!)
 bun run dev --input "./mockup.png" --out "./out"
-bun run dev --input "./folder-of-pngs" --out "./out" --speed slow
+bun run dev --input "./folder/" --out "./out"
+
+# With options
+bun run dev --input "./mockup.png" --out "./out" --no-segments
+bun run dev --input "./mockup.png" --out "./out" --screen-height 2000
 
 # Build to JavaScript
 bun run build
@@ -23,26 +33,27 @@ bun run build
 bun dist/src/cli.js --input "./mockup.png" --out "./out"
 ```
 
-### Testing & Validation
-```bash
-# No automated tests - manual testing required
-# Test with sample file
-bun run dev --input "./test-input/*.png" --out "./out"
+## Output Structure (NEW!)
 
-# Verify ffmpeg is installed
-ffmpeg -version
-```
+For input `mockup.png`, generates:
+- `mockup.framed.scroll.gif` - Animated GIF with human-like scrolling
+- `mockup.framed.1.png` - First framed segment (with bezel)
+- `mockup.framed.2.png` - Second framed segment (etc.)
+- `mockup.screen.1.png` - First screen segment (NO bezel, square corners)
+- `mockup.screen.2.png` - Second screen segment (etc.)
+
+**NO MORE** `.framed.static.png` files!
 
 ## Project Structure
 ```
 mockup-scroller/
 ├── src/
-│   ├── cli.ts              # CLI entry point with commander
-│   ├── main.ts             # Main orchestration logic
+│   ├── cli.ts              # CLI entry point (NO speed parsing!)
+│   ├── main.ts             # Main orchestration 
 │   ├── fileio.ts           # File operations & validation
-│   ├── image.ts            # Image processing with sharp
-│   ├── animate.ts          # Frame generation & scrolling
-│   ├── encode.ts           # GIF encoding with ffmpeg
+│   ├── image.ts            # Image processing + cropSimple (NEW!)
+│   ├── animate.ts          # HUMAN SCROLLING + segments generation
+│   ├── encode.ts           # GIF encoding (no writeStaticPreview!)
 │   └── bezel/
 │       ├── device-meta.ts  # iPhone SE specs & SVG data
 │       └── svg/
@@ -51,206 +62,283 @@ mockup-scroller/
 ├── dist/                   # Compiled JavaScript output
 ├── out/                    # Generated GIFs and PNGs
 ├── package.json            # Dependencies and scripts
-└── bun.lock               # Lockfile
+└── CLAUDE.md              # THIS FILE - Always check first!
 ```
 
-## Key Technical Details
+## Programming Style & Conventions
 
-### Dependencies
-- **Runtime:** Bun 1.2.21+
-- **Language:** TypeScript 5.5.x
-- **External:** ffmpeg (must be installed separately)
-- **Main Libraries:**
-  - `sharp` - Image processing
-  - `commander` - CLI parsing
-  - `globby` - File pattern matching
-  - `execa` - ffmpeg execution
-  - `zod` - Input validation
+### Owner's Preferences
+1. **NO backwards compatibility** - Clean breaks are fine, remove old code
+2. **NO emojis in code** - Unless explicitly requested
+3. **Simplicity over configuration** - Remove options when one good default exists
+4. **Human-friendly defaults** - Make the tool work well out of the box
+5. **Clean commits** - No co-author tags unless requested
 
-### Device Specifications (iPhone SE)
-- Canvas Size: 900×1800px
-- Viewport: 750×1334px at (75, 210)
-- Screen Corner Radius: 48px
-- Output: 80% scaled GIF (720px width)
-- Animation: 30 FPS, adaptive duration
+### Code Style
+- **TypeScript** - Strict types, interfaces for complex objects
+- **Async/await** - Always use over callbacks
+- **Early returns** - Guard clauses at function start
+- **Descriptive names** - `generateScreenSegments` not `genScreenSegs`
+- **Constants at top** - Configuration should be easily findable
+- **No console.log spam** - Clean, informative output only
 
-### CLI Arguments
-- `--input` / `-i`: Input PNG file(s) or directory
-- `--out` / `-o`: Output directory for GIF/PNG
-- `--speed` / `-s`: Scroll speed (slow/normal/fast)
-
-### Speed Configuration (animate.ts)
+### Error Handling
 ```typescript
-slow:   15px/frame, 180-360 frames (6-12s)
-normal: 21.5px/frame, 150-270 frames (5-9s)  
-fast:   30px/frame, 90-180 frames (3-6s)
+// Use specific exit codes
+// 0 = success
+// 2 = validation error
+// 3 = environment error (missing deps)
+// 4 = processing error
 ```
 
-## Important Implementation Notes
+## Human-like Scrolling (CRITICAL FEATURE)
 
-### File Processing Flow
-1. **Input Validation** (fileio.ts) - Check PNG format, dimensions
-2. **Resize** (image.ts) - Scale to 750px width
-3. **Frame Generation** (animate.ts) - Create scrolling frames
-4. **GIF Encoding** (encode.ts) - Two-pass ffmpeg with palette
-5. **Output** - GIF animation + static PNG preview
+Located in `src/animate.ts`, uses configurable burst pattern:
 
-### Key Functions & Locations
-
-**CLI Entry** - src/cli.ts:34
 ```typescript
-program
-  .option('-i, --input <path>', 'Input PNG files or directory')
-  .option('-o, --out <path>', 'Output directory')
-  .option('-s, --speed <speed>', 'Scroll speed', 'normal')
+// EASILY TUNABLE - Adjust these for different scroll feel
+const SWIPE_PATTERN: SwipeConfig[] = [
+  { distanceFactor: 0.50, swipeFrames: 15, pauseFrames: 15 },
+  { distanceFactor: 0.48, swipeFrames: 14, pauseFrames: 16 },
+  { distanceFactor: 0.52, swipeFrames: 16, pauseFrames: 14 },
+  { distanceFactor: 0.45, swipeFrames: 13, pauseFrames: 17 },
+  { distanceFactor: 0.53, swipeFrames: 17, pauseFrames: 15 },
+];
+
+// Uses smooth ease-in-out cubic for natural motion
+function easeInOutCubic(t: number): number {
+  return t < 0.5
+    ? 4 * t * t * t
+    : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 ```
 
-**Main Processing** - src/main.ts:18
+**Key characteristics:**
+- Swipes: 45-53% of viewport per burst
+- Duration: 0.4-0.6s per swipe (13-17 frames)
+- Pauses: 0.47-0.57s between swipes
+- Easing: Smooth acceleration AND deceleration
+
+## Multi-Screen Segments Feature
+
+### Two Types Generated
+1. **Framed segments** (`.framed.N.png`)
+   - Include iPhone SE bezel
+   - Height: 1334px (viewport height)
+   - Rounded corners (48px radius)
+   
+2. **Screen segments** (`.screen.N.png`)
+   - NO bezel, just content
+   - Height: Configurable (default 1600px)
+   - Square corners
+   - White background for padding
+
+### Segment Logic (src/animate.ts)
 ```typescript
-processFile(inputPath, outputDir, options)
+// 100px overlap between segments
+const OVERLAP = 100;
+
+// Skip last segment if <20% new content
+const TRIVIAL_THRESHOLD = 0.2;
 ```
 
-**Frame Generation** - src/animate.ts:84
+### CLI Options
+- `--no-segments` - Disable segment generation
+- `--screen-height <pixels>` - Screen segment height (default: 1600)
+
+## Key Functions & Their Purposes
+
+### Main Processing Pipeline
+
+**src/main.ts - processOne()**
+- Validates input PNG
+- Generates both segment types
+- Creates animated GIF
+- Handles all error cases
+
+**src/animate.ts - computeHumanScrollOffsets()**
+- Generates natural scrolling pattern
+- Returns array of Y positions for each frame
+- Handles pause frames at start/end
+
+**src/animate.ts - generateSegments()**
+- Creates framed segments with bezel
+- Uses rounded corner mask
+
+**src/animate.ts - generateScreenSegments()**
+- Creates bezel-less segments
+- Configurable height
+- No masking, square corners
+
+**src/image.ts - cropSimple()**
+- For screen segments (no mask)
+- Handles padding with white background
+
+**src/image.ts - cropFrame()**
+- For framed segments
+- Applies rounded corner mask
+- Handles partial content at end
+
+## Common Tasks
+
+### Adjusting Scroll Feel
+Edit `SWIPE_PATTERN` in `src/animate.ts`:
 ```typescript
-generateFrames(inputPath, outputDir, device, options)
+// Make scrolling slower/smoother
+{ distanceFactor: 0.40, swipeFrames: 20, pauseFrames: 20 }
+
+// Make it snappier
+{ distanceFactor: 0.60, swipeFrames: 10, pauseFrames: 10 }
 ```
 
-**GIF Creation** - src/encode.ts:9
-```typescript
-createGif(framePaths, outputPath, device)
-```
-
-### Error Handling & Exit Codes
-- `0` - Success
-- `2` - Validation error (bad args, no PNGs)
-- `3` - Environment error (ffmpeg missing)
-- `4` - Processing error (continues batch)
-
-### Input Constraints
-- Format: PNG only (validated by magic bytes)
-- Min dimensions: 300×500px
-- Max height: 20,000px
-- File size: > 1KB
-
-### Output Files
-For input `mockup.png`:
-- `mockup.framed.scroll.gif` - Animated scrolling GIF
-- `mockup.framed.static.png` - Static first frame
-
-## Common Tasks & Solutions
-
-### Adding New Device Types
-Currently only supports iPhone SE. To add new devices:
-1. Update `src/bezel/device-meta.ts` with new device specs
-2. Create new SVG files in `src/bezel/svg/`
-3. Add device selection logic to CLI
-
-### Modifying Animation Speed
-Edit `SPEED_CONFIG` in `src/animate.ts:10-30`
-
-### Changing Output Quality
-- GIF scaling: `src/encode.ts:42` (currently 80%)
-- PNG compression: `src/image.ts:94` (level 6)
-- Frame rate: `src/encode.ts:36` (30 FPS)
-
-### Batch Processing
+### Changing Screen Segment Height
 ```bash
-# Process entire directory
-bun run dev --input "./screenshots" --out "./out"
+# Default 1600px
+bun run dev --input "./mockup.png" --out "./out"
 
-# With glob pattern
+# Custom height
+bun run dev --input "./mockup.png" --out "./out" --screen-height 2000
+```
+
+### Processing Multiple Files
+```bash
+# Entire directory
+bun run dev --input "./screenshots/" --out "./out"
+
+# Glob pattern
 bun run dev --input "./designs/*.png" --out "./out"
 ```
 
-## Known Issues & Limitations
+### Disable Segments (GIF only)
+```bash
+bun run dev --input "./mockup.png" --out "./out" --no-segments
+```
 
-1. **Single Device Only** - iPhone SE portrait only
-2. **Large File Sizes** - GIFs can be 30-40MB for tall mockups
-3. **Sequential Processing** - No parallel processing (by design)
-4. **No Content Detection** - Preserves all PNG content including padding
-5. **ffmpeg Required** - Must be installed separately
+## Troubleshooting
 
-## Development Workflow
+### Issue: GIF looks jerky
+**Solution:** Adjust `SWIPE_PATTERN` in `src/animate.ts` - increase `swipeFrames` for smoother motion
+
+### Issue: Scrolling too fast/slow
+**Solution:** Modify `distanceFactor` in `SWIPE_PATTERN` - lower = smaller jumps
+
+### Issue: "Expected integer for top but received..."
+**Cause:** Floating point rounding in scroll calculations
+**Solution:** Ensure all position calculations use `Math.round()`
+
+### Issue: Extract area error
+**Cause:** Trying to crop beyond image bounds
+**Solution:** Check `cropFrame()` and `cropSimple()` properly handle content height
+
+### Issue: Old .static.png files
+**Note:** These are deprecated! Delete them, use `.framed.1.png` instead
+
+## Testing Checklist
+
+- [ ] **Short content** (<1334px) - Should generate 1 segment, no scroll
+- [ ] **Medium content** (~3000px) - Multiple segments, smooth scroll
+- [ ] **Tall content** (>5000px) - Many segments, longer animation
+- [ ] **Batch processing** - Multiple files in directory
+- [ ] **--no-segments flag** - Only generates GIF
+- [ ] **--screen-height** - Custom segment heights work
+- [ ] **Invalid input** - Clear error messages
+- [ ] **Missing ffmpeg** - Exit code 3 with helpful message
+
+## File Constraints
+
+### Input Requirements
+- Format: PNG only (validates magic bytes)
+- Min dimensions: 300×500px
+- Max height: 20,000px
+- Min file size: 1KB
+
+### Output Specifications
+- GIF: 80% scaled (720px width), 30 FPS
+- Framed segments: 900×1800px canvas, 750×1334px viewport
+- Screen segments: 750×[configurable]px, no canvas
+
+## Dependencies & Environment
+
+### Required
+- **Bun:** 1.2.21+
+- **ffmpeg:** System-installed (check with `ffmpeg -version`)
+- **Node modules:** Run `bun install`
+
+### Main Libraries
+- `sharp` - All image processing
+- `commander` - CLI argument parsing
+- `globby` - File pattern matching
+- `execa` - ffmpeg subprocess execution
+- `zod` - Input validation
+
+## Git Workflow
 
 ### Making Changes
 1. Edit TypeScript files in `src/`
-2. Test with: `bun run dev --input "./test.png" --out "./out"`
+2. Test: `bun run dev --input "./test.png" --out "./out"`
 3. Build: `bun run build`
-4. Test compiled: `bun dist/src/cli.js --input "./test.png" --out "./out"`
+4. Verify: Check output files manually
+5. Commit: Clear message, no co-author
 
-### File Modifications Tracker
-The file `src/animate.ts` has been modified (git status shows it)
-
-### Testing Checklist
-- [ ] Short content (<1334px) - Should not scroll
-- [ ] Tall content (>1334px) - Should scroll smoothly  
-- [ ] Speed variations - Test slow/normal/fast
-- [ ] Batch processing - Multiple files
-- [ ] Invalid input - Should show clear errors
-- [ ] Missing ffmpeg - Exit code 3
-
-## Future Enhancement Opportunities
-
-### High Priority
-- Multiple device support (iPhone 14, iPad, Android)
-- Landscape orientation support
-- MP4/WebM video output
-- Parallel processing option
-
-### Nice to Have
-- Config file support (.mockuprc)
-- Figma API integration
-- Custom pause durations
-- Easing functions for scroll
-- Web UI wrapper
-
-## Critical Files Reference
-
-| File | Purpose | Key Functions |
-|------|---------|---------------|
-| `src/cli.ts` | CLI interface | Argument parsing, validation |
-| `src/main.ts` | Orchestration | `processFile()` main logic |
-| `src/animate.ts` | Animation | `generateFrames()`, speed config |
-| `src/image.ts` | Image ops | `resizeToViewport()`, `renderFrame()` |
-| `src/encode.ts` | GIF creation | `createGif()` ffmpeg integration |
-| `src/bezel/device-meta.ts` | Device specs | SVG data, dimensions |
-
-## Debugging Tips
-
-### Common Issues
-1. **"ffmpeg not found"** - Install ffmpeg: `brew install ffmpeg`
-2. **Large GIF files** - Normal for tall mockups, already optimized to 80% scale
-3. **Slow processing** - Expected ~50-60s for 270 frames
-4. **Memory issues** - Files processed sequentially to prevent this
-
-### Useful Debug Commands
+### Commit Style
 ```bash
-# Check ffmpeg version
-ffmpeg -version
+# Good
+git commit -m "Add feature X with Y behavior"
 
-# List generated frames
-ls -la out/*.*.png | head -20
+# Bad
+git commit -m "Updated files"
 
-# Check output file sizes
-du -h out/*.gif
+# Never (unless requested)
+git commit -m "Feature X
 
-# Monitor memory during processing
-watch -n 1 'ps aux | grep bun'
+Co-authored-by: ..."
 ```
 
-## Contact & Resources
+## Owner Preferences Summary
 
-- Repository: https://github.com/adpharm/mockup-scroller
-- Original Plan: `MVP_IMPLEMENTATION_PLAN_AUG_28.md`
-- Dev Handoff: `DEVELOPER_HANDOFF.md`
-- Status: `IMPLEMENTATION_STATUS.md`
+1. **Remove rather than deprecate** - No backwards compatibility baggage
+2. **One good default > many options** - Removed speed flags
+3. **Human-like > mechanical** - Natural scrolling patterns
+4. **Clean output** - Minimal console messages
+5. **Straightforward code** - No clever tricks, readable is better
 
-## Quick Reference Summary
+## Quick Command Reference
 
-**Run:** `bun run dev -i "./input.png" -o "./out" -s normal`  
-**Build:** `bun run build`  
-**Test:** Use sample in `test-input/`  
-**Output:** Creates `.gif` and `.png` in output directory  
-**Speed:** slow/normal/fast  
-**Device:** iPhone SE portrait only (for now)  
-**Requirements:** Bun + ffmpeg installed
+```bash
+# Standard usage (most common)
+bun run dev --input "./mockup.png" --out "./out"
+
+# Directory of files
+bun run dev --input "./screenshots/" --out "./out"
+
+# No segments (GIF only)
+bun run dev --input "./mockup.png" --out "./out" --no-segments
+
+# Taller screen segments
+bun run dev --input "./mockup.png" --out "./out" --screen-height 2000
+
+# Build for production
+bun run build
+
+# Run production build
+bun dist/src/cli.js --input "./mockup.png" --out "./out"
+```
+
+## CRITICAL: What Changed Recently
+
+1. **NO MORE --speed flag** - Removed completely
+2. **Human scrolling is default** - Burst-and-pause pattern
+3. **Two segment types** - Framed AND screen segments
+4. **No .static.png files** - Use .framed.1.png
+5. **Cleaned repo** - Removed old docs and empty dirs
+
+## Need Help?
+
+1. Check this file first - it's the source of truth
+2. Look at recent commits for context
+3. Test with sample files in `local/` directory
+4. File issues at: https://github.com/adpharm/mockup-scroller/issues
+
+---
+**Last Updated:** After implementing human-like scrolling and multi-screen segments
+**Maintainer Note:** Keep this file current with ANY changes to behavior or API!
