@@ -9,7 +9,7 @@ export const IPHONE_SE_PORTRAIT: DeviceMeta = {
   canvas: { width: 900, height: 1800 },
   viewport: { x: 75, y: 210, width: 750, height: 1334 },
   screenCornerRadius: 48,
-  backgroundColor: "#0B0F13",
+  backgroundColor: "transparent",
 };
 
 const BEZEL_SVG = `<!-- iPhone SE (2nd/3rd gen, 4.7") SVG mockup for bezel overlay

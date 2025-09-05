@@ -38,9 +38,6 @@ async function processOne(inputPath: string, outDir: string, generateSegmentFile
       outDir
     };
 
-    // Generate framed segments (with device bezel)
-    const framedPaths = await generateSegments(spec, IPHONE_SE_PORTRAIT, generateSegmentFiles);
-    
     // Generate screen segments (no bezel, square corners)
     const screenPaths = await generateScreenSegments(spec, screenHeight, generateSegmentFiles);
     
@@ -58,20 +55,11 @@ async function processOne(inputPath: string, outDir: string, generateSegmentFile
     // Update console output based on segments generated
     console.log(`[${index}/${total}] ✓ ${baseName} completed in ${elapsed}s`);
     
-    if (framedPaths.length > 0 || screenPaths.length > 0) {
-      if (framedPaths.length > 0) {
-        const framedList = framedPaths.length === 1 
-          ? `1 framed segment: ${baseName}.framed.1.png`
-          : `${framedPaths.length} framed segments: ${baseName}.framed.1-${framedPaths.length}.png`;
-        console.log(`    Generated ${framedList}`);
-      }
-      
-      if (screenPaths.length > 0) {
-        const screenList = screenPaths.length === 1
-          ? `1 screen segment: ${baseName}.screen.1.png`
-          : `${screenPaths.length} screen segments: ${baseName}.screen.1-${screenPaths.length}.png`;
-        console.log(`    Generated ${screenList}`);
-      }
+    if (screenPaths.length > 0) {
+      const screenList = screenPaths.length === 1
+        ? `1 screen segment: ${baseName}.screen.1.png`
+        : `${screenPaths.length} screen segments: ${baseName}.screen.1-${screenPaths.length}.png`;
+      console.log(`    Generated ${screenList}`);
     }
     
     console.log(`    Generated scrolling animation: ${baseName}.framed.scroll.gif`);
