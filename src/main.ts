@@ -42,6 +42,9 @@ async function processOne(inputPath: string, outDir: string, generateSegmentFile
     // Generate screen segments (no bezel, square corners)
     const screenPaths = await generateScreenSegments(spec, screenHeight, generateSegmentFiles);
     
+    // Generate framed segments (with bezel)
+    const framedPaths = await generateSegments(spec, IPHONE_SE_PORTRAIT, generateSegmentFiles);
+    
     // Generate animated frames for GIF
     const { framesDir, framesCount, fps } = await renderAllFrames(spec, IPHONE_SE_PORTRAIT);
     
@@ -55,10 +58,13 @@ async function processOne(inputPath: string, outDir: string, generateSegmentFile
     if (upload) {
       const allOutputFiles = [
         path.join(outDir, `${baseName}.framed.scroll.gif`),
+        ...framedPaths,
         ...screenPaths
       ];
       
-      const uploadResults = await uploadOutputFiles(allOutputFiles, baseName);
+      // Extract the output folder name for S3 organization
+      const s3FolderName = path.basename(outDir);
+      const uploadResults = await uploadOutputFiles(allOutputFiles, s3FolderName);
       
       console.log('\n📤 CDN URLs:');
       uploadResults.forEach(result => {
@@ -70,6 +76,13 @@ async function processOne(inputPath: string, outDir: string, generateSegmentFile
     
     // Update console output based on segments generated
     console.log(`[${index}/${total}] ✓ ${baseName} completed in ${elapsed}s`);
+    
+    if (framedPaths.length > 0) {
+      const framedList = framedPaths.length === 1
+        ? `1 framed segment: ${baseName}.framed.1.png`
+        : `${framedPaths.length} framed segments: ${baseName}.framed.1-${framedPaths.length}.png`;
+      console.log(`    Generated ${framedList}`);
+    }
     
     if (screenPaths.length > 0) {
       const screenList = screenPaths.length === 1

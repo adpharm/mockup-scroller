@@ -2,5 +2,6 @@
 
 # Process all PNGs in local/rethink-aug28 folder
 # Generates: GIF animations + screen segments (2400px height)
+# Uploads to S3/CDN
 
-bun run dev --input "./local/rethink-aug28" --out "./out/rethink-sep5" --screen-height 2400
+bun run dev --input "./local/rethink-aug28" --out "./out/rethink-sep5" --screen-height 2400 --upload

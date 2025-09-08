@@ -35,12 +35,12 @@ export async function uploadToS3(localPath: string, s3Key: string): Promise<stri
 
 export async function uploadOutputFiles(
   outputFiles: string[],
-  inputFileName: string
+  s3FolderName: string
 ): Promise<{ local: string; cdn: string }[]> {
   const results: { local: string; cdn: string }[] = [];
   
-  // Organize files under a folder named after the input file (without extension)
-  const folderName = inputFileName.replace(/\.(png|jpg|jpeg)$/i, '');
+  // Use the provided folder name for S3 organization
+  const folderName = s3FolderName;
   
   for (const file of outputFiles) {
     // Create S3 key with folder organization
