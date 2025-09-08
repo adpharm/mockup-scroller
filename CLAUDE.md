@@ -5,6 +5,9 @@
 **Version:** 1.0.0  
 **Purpose:** CLI tool that transforms static PNG mockups into animated GIFs with iPhone SE device bezels and human-like scrolling animation.
 
+## Changelog
+For a complete history of changes and updates, see [CHANGELOG.md](./CHANGELOG.md).
+
 ## Recent Major Changes (IMPORTANT!)
 1. **Human-like scrolling** - Replaced linear scrolling with natural burst-and-pause pattern
 2. **No more speed options** - Removed `--speed` flag, uses optimized defaults
@@ -271,6 +274,11 @@ bun run dev --input "./mockup.png" --out "./out" --no-segments
 - `execa` - ffmpeg subprocess execution
 - `zod` - Input validation
 
+## Infrastructure Management
+
+### Terraform/Terragrunt Rules
+**CRITICAL: Never run `terragrunt apply` or `terraform apply` automatically. Only run `plan` commands and inform the user when they should apply changes.**
+
 ## Git Workflow
 
 ### Making Changes
@@ -279,6 +287,28 @@ bun run dev --input "./mockup.png" --out "./out" --no-segments
 3. Build: `bun run build`
 4. Verify: Check output files manually
 5. Commit: Clear message, no co-author
+
+### When Committing Changes
+When asked to add and commit changes, I should:
+1. Review the changes being committed
+2. Determine if they're significant enough for the changelog
+3. If yes, update CHANGELOG.md with the new entry before committing
+4. Include changelog update in the same commit if applicable
+5. Use clear, descriptive commit messages
+
+Changelog-worthy changes include:
+- New features or functionality
+- Breaking changes or removals
+- Significant bug fixes
+- Major refactoring
+- Documentation updates
+- Configuration changes
+
+Skip changelog for:
+- Minor typo fixes
+- Code formatting only
+- Internal refactoring with no user impact
+- Development-only changes
 
 ### Commit Style
 ```bash
@@ -335,9 +365,10 @@ bun dist/src/cli.js --input "./mockup.png" --out "./out"
 ## Need Help?
 
 1. Check this file first - it's the source of truth
-2. Look at recent commits for context
-3. Test with sample files in `local/` directory
-4. File issues at: https://github.com/adpharm/mockup-scroller/issues
+2. Review [CHANGELOG.md](./CHANGELOG.md) for version history
+3. Look at recent commits for context
+4. Test with sample files in `local/` directory
+5. File issues at: https://github.com/adpharm/mockup-scroller/issues
 
 ---
 **Last Updated:** After implementing human-like scrolling and multi-screen segments

@@ -4,9 +4,10 @@ import { loadMeta } from './image.js';
 import { renderAllFrames, generateSegments, generateScreenSegments } from './animate.js';
 import { encodeGif, cleanupTemp } from './encode.js';
 import { IPHONE_SE_PORTRAIT } from './bezel/device-meta.js';
+import { uploadOutputFiles } from './s3-upload.js';
 import type { FrameRenderSpec } from './image.js';
 
-async function processOne(inputPath: string, outDir: string, generateSegmentFiles: boolean, screenHeight: number, index: number, total: number): Promise<boolean> {
+async function processOne(inputPath: string, outDir: string, generateSegmentFiles: boolean, screenHeight: number, upload: boolean, index: number, total: number): Promise<boolean> {
   const baseName = sanitizeBasename(inputPath);
   const startTime = Date.now();
   console.log(`[${index}/${total}] Processing: ${baseName}.png`);
@@ -45,10 +46,25 @@ async function processOne(inputPath: string, outDir: string, generateSegmentFile
     const { framesDir, framesCount, fps } = await renderAllFrames(spec, IPHONE_SE_PORTRAIT);
     
     // Create animated GIF
-    await encodeGif(framesDir, baseName, outDir, fps);
+    const gifPath = await encodeGif(framesDir, baseName, outDir, fps);
     
     // Clean up temporary frames
     await cleanupTemp(framesDir);
+    
+    // Upload to CDN if requested
+    if (upload) {
+      const allOutputFiles = [
+        path.join(outDir, `${baseName}.framed.scroll.gif`),
+        ...screenPaths
+      ];
+      
+      const uploadResults = await uploadOutputFiles(allOutputFiles, baseName);
+      
+      console.log('\n📤 CDN URLs:');
+      uploadResults.forEach(result => {
+        console.log(`  ${result.cdn}`);
+      });
+    }
     
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     
@@ -73,7 +89,7 @@ async function processOne(inputPath: string, outDir: string, generateSegmentFile
   }
 }
 
-export async function main(input: string, outDir: string, generateSegments: boolean = true, screenHeight: number = 1600): Promise<number> {
+export async function main(input: string, outDir: string, generateSegments: boolean = true, screenHeight: number = 1600, upload: boolean = false): Promise<number> {
   const files = await resolveInputFiles(input);
   
   if (files.length === 0) {
@@ -90,7 +106,7 @@ export async function main(input: string, outDir: string, generateSegments: bool
   const startTime = Date.now();
   
   for (let i = 0; i < files.length; i++) {
-    const success = await processOne(files[i], outDir, generateSegments, screenHeight, i + 1, files.length);
+    const success = await processOne(files[i], outDir, generateSegments, screenHeight, upload, i + 1, files.length);
     if (success) {
       succeeded++;
     } else {

@@ -9,7 +9,8 @@ const argsSchema = z.object({
   input: z.string().min(1),
   out: z.string().min(1),
   segments: z.boolean().optional().default(true),  // Changed to positive flag
-  screenHeight: z.number().optional().default(1600)
+  screenHeight: z.number().optional().default(1600),
+  upload: z.boolean().optional().default(false)
 });
 
 async function checkFfmpeg(): Promise<boolean> {
@@ -31,6 +32,7 @@ async function run() {
     .requiredOption('--out <directory>', 'Output directory')
     .option('--no-segments', 'Disable generation of individual screen segments')
     .option('--screen-height <pixels>', 'Height of screen segments in pixels (default: 1600)', '1600')
+    .option('--upload', 'Upload generated files to CDN')
     .parse(process.argv);
 
   const options = program.opts();
@@ -47,7 +49,7 @@ async function run() {
     process.exit(2);
   }
 
-  const { input, out, segments, screenHeight } = parseResult.data;
+  const { input, out, segments, screenHeight, upload } = parseResult.data;
   
   const absInput = path.resolve(input);
   const absOut = path.resolve(out);
@@ -68,7 +70,7 @@ async function run() {
   console.log(`ffmpeg version: ${ffmpegFirstLine}`);
 
   try {
-    const exitCode = await main(absInput, absOut, segments, screenHeight);
+    const exitCode = await main(absInput, absOut, segments, screenHeight, upload);
     process.exit(exitCode);
   } catch (error) {
     console.error('ERROR: Unhandled exception:', error);

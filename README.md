@@ -2,6 +2,10 @@
 
 A CLI tool that transforms static PNG mockups into animated GIFs with device frames and smooth scrolling.
 
+## What's New
+
+See [CHANGELOG.md](./CHANGELOG.md) for recent updates and version history.
+
 ## Example
 
 ```bash
@@ -13,8 +17,11 @@ bun run dev --input "./landing-page.png" --out "./output"
 
 This generates:
 
-- `landing-page.framed.scroll.gif` - Animated scrolling version
-- `landing-page.framed.static.png` - Static preview (first frame)
+- `landing-page.framed.scroll.gif` - Animated scrolling version with human-like scrolling
+- `landing-page.framed.1.png` - First framed segment (with bezel)
+- `landing-page.framed.2.png` - Second framed segment (etc.)
+- `landing-page.screen.1.png` - First screen segment (no bezel)
+- `landing-page.screen.2.png` - Second screen segment (etc.)
 
 ## Installation
 
@@ -44,17 +51,14 @@ bun run dev --input "./mockup.png" --out "./output"
 bun run dev --input "./designs/*.png" --out "./output"
 ```
 
-### Speed Control
+### Options
 
 ```bash
-# Slow (easier to read)
-bun run dev --input "./mockup.png" --out "./output" --speed slow
+# Disable segment generation (GIF only)
+bun run dev --input "./mockup.png" --out "./output" --no-segments
 
-# Normal (default)
-bun run dev --input "./mockup.png" --out "./output" --speed normal
-
-# Fast (quick preview)
-bun run dev --input "./mockup.png" --out "./output" --speed fast
+# Custom screen segment height (default: 1600px)
+bun run dev --input "./mockup.png" --out "./output" --screen-height 2000
 ```
 
 ## How It Works
@@ -62,8 +66,9 @@ bun run dev --input "./mockup.png" --out "./output" --speed fast
 1. Takes a PNG mockup (typically exported from Figma)
 2. Resizes it to fit iPhone SE viewport (750×1334px)
 3. Adds device frame with rounded corners
-4. Creates smooth scrolling animation if content is taller than viewport
-5. Outputs optimized GIF with 1-second pauses at start/end for seamless looping
+4. Creates human-like scrolling animation with natural burst-and-pause patterns
+5. Generates multiple screen segments for easy sharing
+6. Outputs optimized GIF with smooth pauses for seamless looping
 
 ## Current Limitations
 

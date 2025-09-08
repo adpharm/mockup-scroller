@@ -8,7 +8,7 @@ export async function encodeGif(
   baseName: string,
   outDir: string,
   fps: number = 30
-): Promise<void> {
+): Promise<string> {
   const inputPattern = path.join(framesDir, `${baseName}.%06d.png`);
   const palettePath = path.join(outDir, `${baseName}.palette.png`);
   const outputPath = path.join(outDir, `${baseName}.framed.scroll.gif`);
@@ -34,6 +34,8 @@ export async function encodeGif(
   ]);
 
   await cleanupFile(palettePath);
+  
+  return outputPath;
 }
 
 export async function cleanupTemp(
