@@ -1,0 +1,206 @@
+
+terraform {
+  required_providers {
+    bunnynet = {
+      source  = "BunnyWay/bunnynet"
+      version = "~> 0.4.0"
+    }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+# Get the bunny api key from AWS Secrets Manager
+data "aws_secretsmanager_secret" "general_secrets_metadata" {
+  name = "adapts/general_secrets"
+}
+data "aws_secretsmanager_secret_version" "general_secrets" {
+  secret_id = data.aws_secretsmanager_secret.general_secrets_metadata.id
+}
+locals {
+  bunny_api_key = jsondecode(data.aws_secretsmanager_secret_version.general_secrets.secret_string)["bunny_api_key"]
+}
+
+# Configure the BunnyNet Provider
+provider "bunnynet" {
+  api_key = local.bunny_api_key
+}
+
+#########################################################################################################
+##                                        Variables                                                     
+########################################################################################################
+variable "bucket_cdn_domain" {
+  type = string
+}
+variable "bucket_name" {
+  type = string
+}
+variable "bucket_region" {
+  type = string
+}
+variable "bunny_iam_access_key" {
+  type      = string
+  sensitive = true
+}
+variable "bunny_iam_secret_access_key" {
+  type      = string
+  sensitive = true
+}
+#########################################################################################################
+##                                        Variables end                                                    
+#########################################################################################################
+
+locals {
+  domain_name_sanitized = lower(replace(var.bucket_cdn_domain, ".", "-"))
+  domain_pieces         = split(".", var.bucket_cdn_domain)
+  root_domain_name      = "${local.domain_pieces[length(local.domain_pieces) - 2]}.${local.domain_pieces[length(local.domain_pieces) - 1]}"
+}
+
+#########################################################################################################
+##                                        S3 Bucket
+#########################################################################################################
+# Create the client drive bucket
+resource "aws_s3_bucket" "bucket" {
+  bucket = var.bucket_name
+  tags = {
+    Name = var.bucket_name
+  }
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_s3_bucket_versioning" "bucket_versioning" {
+  bucket = aws_s3_bucket.bucket.bucket
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_cors_configuration" "cors_config" {
+  bucket = aws_s3_bucket.bucket.bucket
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "DELETE"]
+    allowed_origins = concat([
+      "https://${var.bucket_cdn_domain}", # not sure this is necessary
+      "https://*.adapts.ca",
+      "https://adapts.ca",
+      ], strcontains(var.bucket_name, "staging") ? [
+      "http://localhost:3000",
+      "http://*.localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://0.0.0.0:3000",
+      "http://localhost:3001",
+      "http://*.localhost:3001",
+      "http://127.0.0.1:3001",
+      "http://0.0.0.0:3001",
+      "https://*.vercel.app",
+    ] : [])
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+
+}
+
+#########################################################################################################
+##                                        Pull Zone (Bunny)
+#########################################################################################################
+
+# Create the pull zone
+resource "bunnynet_pullzone" "pullzone" {
+  name = local.domain_name_sanitized
+
+  origin {
+    type = "OriginUrl"
+    url  = "https://${var.bucket_name}.s3.${var.bucket_region}.amazonaws.com"
+  }
+
+  routing {
+    tier = "Standard"
+    # AF, ASIA, EU, SA, US
+    zones = ["US", "EU"]
+  }
+
+  # settings
+
+  # s3 auth
+  s3_auth_enabled = true
+  s3_auth_key     = var.bunny_iam_access_key
+  s3_auth_secret  = var.bunny_iam_secret_access_key
+  s3_auth_region  = var.bucket_region
+
+  # Limit the maximum number of requests per second for single IP. Set to 0 for unlimited.
+  limit_requests = 100
+
+  # Limit the maximum number of allowed connections to the zone per IP. Set to 0 for unlimited.
+  limit_connections = 100
+
+  # Limits the allowed bandwidth used in a month. If the limit is reached the zone will be disabled. Set to 0 for unlimited.
+  # Measured in Bytes
+  # Cost calculation: 0.01 per GB
+  #   e.g. 5368709120 = 5GB = $0.05
+  #   e.g. 53687091200 = 50GB = $0.50
+  #   e.g. 5368709120000 = 5000GB = $50
+  # we're using 5000gb because we're not sure how much bandwidth we'll use serving assets
+  limit_bandwidth = 5368709120000
+}
+
+#########################################################################################################
+##                                        DNS Record(s)
+##                                     If subdomain - Route53 CNAME Record 
+##                     If root domain - Route53 A Record to nearest BunnyNet edge (manually chosen)
+#########################################################################################################
+
+# Get the hosted zone
+data "aws_route53_zone" "zone" {
+  name = local.root_domain_name
+}
+
+# Create the root domain A record
+resource "aws_route53_record" "root_record" {
+  # only create this record if:
+  #  - the domain is the root domain
+  count   = var.bucket_cdn_domain == local.root_domain_name ? 1 : 0
+  zone_id = data.aws_route53_zone.zone.zone_id
+  name    = local.root_domain_name
+  type    = "A"
+  ttl     = 300
+  records = [
+    "169.150.219.114" # Toronto
+    # "138.199.40.58" # New York
+    # "169.150.221.147" # San Jose
+    # "169.150.249.168" # Los Angeles
+  ]
+}
+
+# Create the subdomain CNAME record, if applicable
+resource "aws_route53_record" "subdomain_record" {
+  # check if the domain is the root domain
+  # if it is, we don't need to create a CNAME record
+  count   = var.bucket_cdn_domain != local.root_domain_name ? 1 : 0
+  zone_id = data.aws_route53_zone.zone.zone_id
+  name    = var.bucket_cdn_domain
+  type    = "CNAME"
+  ttl     = 300
+
+  records = [
+    # the part before the .b-cdn.net must match the pullzone name
+    "${local.domain_name_sanitized}.b-cdn.net"
+  ]
+}
+
+#########################################################################################################
+##                                   Pull Zone Hostname (Bunny)
+#########################################################################################################
+
+# create the hostname for the pullzone (must be done after the DNS record is created)
+resource "bunnynet_pullzone_hostname" "pullzone_hostname" {
+  depends_on  = [aws_route53_record.root_record, aws_route53_record.subdomain_record]
+  pullzone    = bunnynet_pullzone.pullzone.id
+  name        = var.bucket_cdn_domain
+  tls_enabled = true
+  force_ssl   = true
+}

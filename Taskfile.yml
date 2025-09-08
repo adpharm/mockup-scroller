@@ -1,0 +1,261 @@
+version: "3"
+
+# https://taskfile.dev/usage/#output-syntax
+output: prefixed
+
+vars:
+  AWS_PROFILE: "pharmer"
+  AWS_REGION: "ca-central-1"
+
+dotenv:
+  - .env
+
+tasks:
+  default:
+    cmds:
+      - task --list-all
+
+  ########################################################################################################################
+  #
+  #                                        AWS Authentication
+  #
+  ########################################################################################################################
+
+  login:
+    desc: Login to AWS SSO
+    requires:
+      vars:
+        - AWS_PROFILE
+    cmds:
+      - aws sso login --profile {{.AWS_PROFILE}}
+
+  check-aws-identity:
+    requires:
+      vars:
+        - AWS_PROFILE
+    cmds:
+      - |
+        if ! aws sts get-caller-identity --profile {{.AWS_PROFILE}}; then
+          echo ""
+          echo "Your '{{.AWS_PROFILE}}' AWS profile is not logged in. Run 'task login' to log in."
+          exit 1
+        fi
+    silent: true
+
+  ########################################################################################################################
+  #
+  #                                        Development
+  #
+  ########################################################################################################################
+
+  dev:
+    desc: Run the CLI in development mode
+    cmds:
+      - bun run dev {{.CLI_ARGS}}
+
+  build:
+    desc: Build TypeScript to JavaScript
+    cmds:
+      - bun run build
+
+  test:
+    desc: Run tests
+    cmds:
+      - bun test
+
+  clean:
+    desc: Clean build artifacts and output
+    cmds:
+      - rm -rf dist/
+      - rm -rf out/
+      - rm -rf .terragrunt-cache/
+      - rm -rf terraform/.terragrunt-cache/
+
+  ########################################################################################################################
+  #
+  #                                        Infrastructure
+  #
+  ########################################################################################################################
+
+  infra:init:
+    desc: Initialize Terraform
+    dir: terraform
+    deps:
+      - check-aws-identity
+    cmds:
+      - terragrunt init
+
+  infra:init:upgrade:
+    desc: Upgrade Terraform modules
+    dir: terraform
+    deps:
+      - check-aws-identity
+    cmds:
+      - terragrunt init -upgrade
+
+  infra:plan:
+    desc: Plan infrastructure changes
+    dir: terraform
+    deps:
+      - check-aws-identity
+      - infra:check-secrets
+    cmds:
+      - terragrunt plan
+
+  infra:apply:
+    desc: Apply infrastructure changes
+    dir: terraform
+    deps:
+      - check-aws-identity
+      - infra:check-secrets
+    cmds:
+      - terragrunt apply
+
+  infra:destroy:
+    desc: Destroy infrastructure
+    dir: terraform
+    deps:
+      - check-aws-identity
+    cmds:
+      - terragrunt destroy
+
+  infra:output:
+    desc: Show Terraform outputs
+    dir: terraform
+    deps:
+      - check-aws-identity
+    cmds:
+      - terragrunt output
+
+  infra:output:json:
+    desc: Show Terraform outputs as JSON
+    dir: terraform
+    deps:
+      - check-aws-identity
+    cmds:
+      - terragrunt output -json | jq
+
+  infra:show-cdn:
+    desc: Show CDN URL and S3 bucket info
+    dir: terraform
+    deps:
+      - check-aws-identity
+    cmds:
+      - |
+        echo "CDN URL: $(terragrunt output -raw cdn_url 2>/dev/null || echo 'Not deployed yet')"
+        echo "S3 Bucket: $(terragrunt output -raw s3_bucket_name 2>/dev/null || echo 'Not deployed yet')"
+        echo "Bunny Hostname: $(terragrunt output -raw bunny_pullzone_hostname 2>/dev/null || echo 'Not deployed yet')"
+
+  infra:check-secrets:
+    desc: Verify required secrets exist
+    cmds:
+      - |
+        echo "Checking for Bunny API key in AWS Secrets Manager..."
+        if aws secretsmanager describe-secret \
+          --secret-id shared/bunnynet \
+          --region {{.AWS_REGION}} \
+          --profile {{.AWS_PROFILE}} \
+          > /dev/null 2>&1; then
+          echo "✅ Bunny API key found at shared/bunnynet"
+        else
+          echo "❌ Secret 'shared/bunnynet' not found!"
+          echo "The Bunny API key should be stored at shared/bunnynet with key 'bunny_api_key'"
+          exit 1
+        fi
+    silent: false
+
+  ########################################################################################################################
+  #
+  #                                        Examples & Testing
+  #
+  ########################################################################################################################
+
+  example:basic:
+    desc: Run basic example (local output only)
+    cmds:
+      - bun run dev --input "./test.png" --out "./out"
+
+  example:segments:
+    desc: Run example with custom segment height
+    cmds:
+      - bun run dev --input "./test.png" --out "./out" --screen-height 2000
+
+  example:no-segments:
+    desc: Run example with GIF only (no segments)
+    cmds:
+      - bun run dev --input "./test.png" --out "./out" --no-segments
+
+  example:batch:
+    desc: Run batch processing example
+    cmds:
+      - bun run dev --input "./screenshots/" --out "./out"
+
+  example:upload:
+    desc: Run example with CDN upload (requires infrastructure)
+    deps:
+      - check-aws-identity
+    cmds:
+      - bun run dev --input "./test.png" --out "./out" --upload
+
+  ########################################################################################################################
+  #
+  #                                        Utilities
+  #
+  ########################################################################################################################
+
+  check-deps:
+    desc: Check if all dependencies are installed
+    cmds:
+      - |
+        echo "Checking dependencies..."
+        MISSING_DEPS=""
+
+        command -v bun >/dev/null 2>&1 || MISSING_DEPS="${MISSING_DEPS}❌ Bun not installed\n"
+        command -v ffmpeg >/dev/null 2>&1 || MISSING_DEPS="${MISSING_DEPS}❌ FFmpeg not installed\n"
+        command -v terragrunt >/dev/null 2>&1 || MISSING_DEPS="${MISSING_DEPS}❌ Terragrunt not installed\n"
+        command -v terraform >/dev/null 2>&1 || MISSING_DEPS="${MISSING_DEPS}❌ Terraform not installed\n"
+        command -v aws >/dev/null 2>&1 || MISSING_DEPS="${MISSING_DEPS}❌ AWS CLI not installed\n"
+        command -v jq >/dev/null 2>&1 || MISSING_DEPS="${MISSING_DEPS}❌ jq not installed (optional but recommended)\n"
+
+        if [ -n "$MISSING_DEPS" ]; then
+          echo -e "$MISSING_DEPS"
+          exit 1
+        else
+          echo "✅ All dependencies installed"
+        fi
+
+  install:
+    desc: Install npm dependencies
+    cmds:
+      - bun install
+
+  ########################################################################################################################
+  #
+  #                                        Git & Documentation
+  #
+  ########################################################################################################################
+
+  git:status:
+    desc: Show git status
+    cmds:
+      - git status
+
+  git:diff:
+    desc: Show git diff
+    cmds:
+      - git diff
+
+  git:log:
+    desc: Show recent git commits
+    cmds:
+      - git log --oneline -10
+
+  docs:
+    desc: Show project documentation
+    cmds:
+      - |
+        echo "📚 Documentation:"
+        echo "  - README.md: Project overview and usage"
+        echo "  - CLAUDE.md: Development guide and conventions"
+        echo "  - CHANGELOG.md: Version history"
+        echo "  - terraform/README.md: Infrastructure documentation"

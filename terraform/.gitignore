@@ -1,0 +1,26 @@
+# Terraform files
+*.tfstate
+*.tfstate.*
+.terraform/
+.terragrunt-cache/
+*.tfplan
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Generated files
+backend.tf
+provider.tf
+.terraform.lock.hcl
+
+# OS files
+.DS_Store
+*.log
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
